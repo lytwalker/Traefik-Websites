@@ -1,0 +1,25 @@
+[log]
+  level = "ERROR"
+
+[providers.docker]
+  exposedByDefault = false
+  endpoint = "tcp://dockerproxy:2375"
+  network = "traefik"
+
+[entryPoints]
+  [entryPoints.web]
+    address = ":80"
+  [entryPoints.web-secure]
+    address = ":443"
+
+[certificatesResolvers]
+  [certificatesResolvers.default.acme]
+    email = "sleepingchickensoftware@gmail.com"
+    storage = "acme.json"
+    caServer = "https://acme-staging-v02.api.letsencrypt.org/directory"
+    # [certificatesResolvers.default.acme.tlsChallenge]
+    [certificatesResolvers.default.acme.dnsChallenge]
+    provider = "duckdns"
+    delayBeforeCheck = 0
+    resolvers = ["1.1.1.1:53", "8.8.8.8:53"]
+

@@ -1,0 +1,152 @@
+version: "3"
+
+networks:
+  default:
+    driver: bridge
+  traefik:
+    internal: true
+
+services:
+  watchtower:
+    command: --label-enable --cleanup --interval 300
+    image: containrrr/watchtower
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    network_mode: none
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  dockerproxy:
+    depends_on:
+      - watchtower
+    environment:
+      CONTAINERS: 1
+    image: tecnativa/docker-socket-proxy
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    networks:
+      - traefik
+    ports:
+      - 2375
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+
+  traefik:
+    depends_on:
+      - dockerproxy
+      - watchtower
+    image: traefik:2.1
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    networks:
+      - default
+      - traefik
+    ports:
+      - 80:80
+      - 443:443
+    environment:
+      - "DUCKDNS_TOKEN=9a8262c3-2064-45f6-8797-8ac949a001d0"
+    restart: always
+    volumes:
+      - ./data/conf/traefik/acme.json:/acme.json
+      - ./data/conf/traefik/traefik.toml:/traefik.toml
+      - ./data/volumes/traefik/tmp:/tmp
+
+  mariadb:
+    depends_on:
+      - watchtower
+    env_file: .mariadb.env
+    image: mariadb:10
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    networks:
+      - default
+    ports:
+      - 3306:3306
+    restart: always
+    volumes:
+      - ./data/volumes/mariadb:/var/lib/mysql
+
+  redis:
+    depends_on:
+      - watchtower
+    image: redis:5
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    networks:
+      - default
+    restart: always
+    volumes:
+      - ./data/volumes/redis:/data
+
+  octobercms:
+    depends_on:
+      - mariadb
+      - traefik
+      - watchtower
+    env_file: .octobercms.env
+    image: aspendigital/octobercms
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.octobercms-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.octobercms-http.entrypoints=web"
+      - "traefik.http.routers.octobercms-http.rule=Host(`ocms.nyeke.duckdns.org`)"
+      - "traefik.http.routers.octobercms-http.middlewares=octobercms-https@docker"
+      - "traefik.http.routers.octobercms.entrypoints=web-secure"
+      - "traefik.http.routers.octobercms.rule=Host(`ocms.nyeke.duckdns.org`)"
+      - "traefik.http.routers.octobercms.tls=true"
+      - "traefik.http.routers.octobercms.tls.certresolver=default"
+      - "com.centurylinklabs.watchtower.enable=true"
+    networks:
+      - default
+    restart: always
+    # volumes:
+    #   - ./data/volumes/web:/var/www/html
+
+  nginx:
+    depends_on:
+      - mariadb
+      - traefik
+      - watchtower
+    image: nginx
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.nginx-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.nginx-http.entrypoints=web"
+      - "traefik.http.routers.nginx-http.rule=Host(`nginx.nyeke.duckdns.org`)"
+      - "traefik.http.routers.nginx-http.middlewares=nginx-https@docker"
+      - "traefik.http.routers.nginx.entrypoints=web-secure"
+      - "traefik.http.routers.nginx.rule=Host(`nginx.nyeke.duckdns.org`)"
+      - "traefik.http.routers.nginx.tls=true"
+      - "traefik.http.routers.nginx.tls.certresolver=default"
+      - "com.centurylinklabs.watchtower.enable=true"
+    networks:
+      - default
+    restart: always
+    # volumes:
+    #   - ./data/volumes/nginx/code:/code
+    #   - ./data/conf/nginx/site.conf:/etc/nginx/conf.d/site.conf
+
+  httpd:
+    depends_on:
+      - mariadb
+      - traefik
+      - watchtower
+    image: httpd
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.httpd-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.httpd-http.entrypoints=web"
+      - "traefik.http.routers.httpd-http.rule=Host(`httpd.nyeke.duckdns.org`)"
+      - "traefik.http.routers.httpd-http.middlewares=httpd-https@docker"
+      - "traefik.http.routers.httpd.entrypoints=web-secure"
+      - "traefik.http.routers.httpd.rule=Host(`httpd.nyeke.duckdns.org`)"
+      - "traefik.http.routers.httpd.tls=true"
+      - "traefik.http.routers.httpd.tls.certresolver=default"
+      - "com.centurylinklabs.watchtower.enable=true"
+    networks:
+      - default
+    restart: always
+    # volumes:
+    #   - ./data/volumes/httpd:/htdocs
